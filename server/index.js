@@ -6,6 +6,7 @@ import morgan from 'morgan';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import connectDB from './config/db.js';
+import authRoutes from './routes/authRoutes.js';
 
 dotenv.config();
 connectDB();
@@ -20,6 +21,7 @@ app.use(cors({ origin: 'http://localhost:5173' }));
 app.use(helmet());
 app.use(morgan('dev'));
 app.use(express.json());
+app.use('/api/auth', authRoutes);
 
 app.get('/', (req, res) => {
   res.json({ message: 'IntellMeet API running' });
