@@ -10,6 +10,8 @@ import connectDB from './config/db.js';
 import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import meetingRoutes from './routes/meetingRoutes.js';
+import chatRoutes from './routes/chatRoutes.js';
+import ChatMessage from './models/ChatMessage.js';
 
 dotenv.config();
 connectDB();
@@ -27,6 +29,7 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/meetings', meetingRoutes);
+app.use('/api/chat', chatRoutes);
 
 app.get('/', (req, res) => {
   res.json({ message: 'IntellMeet API running' });
@@ -73,6 +76,62 @@ io.on('connection', (socket) => {
   socket.on('ice-candidate', ({ to, candidate }) => {
     io.to(to).emit('ice-candidate', { from: socket.id, candidate });
   });
+
+  // =========================
+  // CHAT EVENTS
+  // =========================
+
+  // Send a chat message
+  socket.on('send-message', async ({ roomId, meetingId, senderId, senderName, text }) => {
+    try {
+      const message = await ChatMessage.create({
+        meeting: meetingId,
+        sender: senderId,
+        text,
+      });
+
+      io.to(roomId).emit('new-message', {
+        _id: message._id,
+        text: message.text,
+        sender: {
+          _id: senderId,
+          name: senderName,
+        },
+        createdAt: message.createdAt,
+      });
+    } catch (err) {
+      console.error('Send message error:', err);
+      socket.emit('message-error', {
+        message: 'Failed to send message',
+      });
+    }
+  });
+
+  // Typing indicator
+  socket.on('typing', ({ roomId, userName }) => {
+    socket.to(roomId).emit('user-typing', {
+      userName,
+    });
+  });
+
+  socket.on('stop-typing', ({ roomId }) => {
+    socket.to(roomId).emit('user-stop-typing');
+  });
+
+  // Notifications
+  socket.on('send-notification', ({ toUserId, type, message, meetingId }) => {
+    io.emit('notification', {
+      toUserId,
+      type,
+      message,
+      meetingId,
+      createdAt: new Date(),
+    });
+  });
+
+  // =========================
+  // ROOM LEAVE EVENTS
+  // =========================
 
   // User leaves room manually
   socket.on('leave-room', ({ roomId }) => {
