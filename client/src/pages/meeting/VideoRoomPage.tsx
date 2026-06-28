@@ -3,7 +3,8 @@ import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import Peer from "simple-peer";
 import { useSocket } from "@/socket/useSocket";
 import { useAuthStore } from "@/store/authStore";
-import { Mic, MicOff, Video, VideoOff, PhoneOff} from "lucide-react";
+import { Mic, MicOff, Video, VideoOff, PhoneOff, MessageSquare} from "lucide-react";
+import ChatPanel from "@/components/meeting/ChatPanel"
 
 interface PeerData {
   peer: Peer.Instance;
@@ -27,7 +28,8 @@ export default function VideoRoomPage() {
   const [peers, setPeers] = useState<PeerData[]>([]);
   const [micOn, setMicOn] = useState(searchParams.get("mic") !== "false");
   const [camOn, setCamOn] = useState(searchParams.get("cam") !== "false");
-
+  const [chatOpen, setChatOpen] = useState(false);
+  
   const roomId = id!;
 
   // Add remote stream to state when peer connects
@@ -141,27 +143,37 @@ export default function VideoRoomPage() {
 
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col">
-      {/* Video grid */}
-      <div className="flex-1 p-4 grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.min(allVideos.length, 3)}, 1fr)` }}>
-        {allVideos.map(({ socketId, userName, stream, isMe }) => (
-          <div key={socketId} className="relative bg-slate-800 rounded-xl overflow-hidden aspect-video">
-            {isMe ? (
-              <video ref={myVideoRef} autoPlay muted playsInline className="w-full h-full object-cover scale-x-[-1]" />
-            ) : (
-              <RemoteVideo stream={stream} />
-            )}
-            <div className="absolute bottom-2 left-2 bg-black/50 text-white text-xs px-2 py-0.5 rounded-full">
-              {userName} {isMe ? "(You)" : ""}
+      <div className="flex-1 flex overflow-hidden">
+        <div
+          className="flex-1 p-4 grid gap-3 content-start"
+          style={{ gridTemplateColumns: `repeat(${Math.min(allVideos.length, 3)}, 1fr)` }}
+        >
+          {allVideos.map(({ socketId, userName, stream, isMe }) => (
+            <div key={socketId} className="relative bg-slate-800 rounded-xl overflow-hidden aspect-video">
+              {isMe ? (
+                <video ref={myVideoRef} autoPlay muted playsInline className="w-full h-full object-cover scale-x-[-1]" />
+              ) : (
+                <RemoteVideo stream={stream} />
+              )}
+              <div className="absolute bottom-2 left-2 bg-black/50 text-white text-xs px-2 py-0.5 rounded-full">
+                {userName} {isMe ? "(You)" : ""}
+              </div>
             </div>
+          ))}
+        </div>
+
+        {chatOpen && (
+          <div className="w-80 flex-shrink-0 h-full">
+            <ChatPanel meetingId={id!} roomId={roomId} />
           </div>
-        ))}
+        )}
       </div>
 
-      {/* Control bar */}
       <div className="bg-slate-800 border-t border-slate-700 px-6 py-4 flex items-center justify-center gap-4">
         <ControlBtn onClick={toggleMic} active={micOn} icon={micOn ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />} />
         <ControlBtn onClick={toggleCam} active={camOn} icon={camOn ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />} />
-        <button onClick={handleLeave} className="w-12 h-12 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center transition-colors">
+        <ControlBtn onClick={() => setChatOpen((p) => !p)} active={!chatOpen} icon={<MessageSquare className="w-5 h-5" />} />
+        <button onClick={handleLeave} className="w-12 h-12 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center">
           <PhoneOff className="w-5 h-5" />
         </button>
       </div>
