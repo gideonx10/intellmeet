@@ -1,34 +1,99 @@
+import { useState } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { useLogout } from "@/hooks/useAuth";
+import { useCreateMeeting, useJoinMeeting } from "@/hooks/useMeetings";
 import { Button } from "@/components/ui/button";
-import { LogOut } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { LogOut, Video, Users, Plus } from "lucide-react";
 
 export default function DashboardPage() {
   const { user } = useAuthStore();
   const { mutate: logout } = useLogout();
+  const { mutate: createMeeting, isPending: creating } = useCreateMeeting();
+  const { mutate: joinMeeting, isPending: joining, error: joinError } = useJoinMeeting();
+  const [title, setTitle] = useState("");
+  const [code, setCode] = useState("");
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Navbar */}
       <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-xl">🤝</span>
           <span className="font-semibold text-slate-800">IntellMeet</span>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-sm text-slate-600">Hey, {user?.name} 👋</span>
+          <span className="text-sm text-slate-600">{user?.name}</span>
           <Button variant="outline" size="sm" onClick={() => logout()}>
             <LogOut className="w-4 h-4 mr-1" /> Logout
           </Button>
         </div>
       </header>
 
-      {/* Body placeholder — we'll build this properly on Days 10–14 */}
-      <main className="max-w-4xl mx-auto px-6 py-12 text-center">
-        <div className="bg-white border border-slate-200 rounded-xl p-12 shadow-sm">
-          <div className="text-5xl mb-4">🚀</div>
-          <h2 className="text-xl font-semibold text-slate-800 mb-2">Dashboard coming on Day 10</h2>
-          <p className="text-slate-500 text-sm">Auth is working — you're logged in as <strong>{user?.email}</strong></p>
+      <main className="max-w-2xl mx-auto px-6 py-12 space-y-6">
+        <div>
+          <h2 className="text-xl font-semibold text-slate-800">Good to see you, {user?.name?.split(" ")[0]} 👋</h2>
+          <p className="text-slate-500 text-sm mt-1">Start a new meeting or join an existing one</p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Create Meeting */}
+          <Card className="border border-slate-200 shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <Plus className="w-4 h-4 text-blue-600" />
+                </div>
+                New Meeting
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Input
+                placeholder="Meeting title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="border-slate-200"
+              />
+              <Button
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                disabled={!title.trim() || creating}
+                onClick={() => createMeeting({ title })}
+              >
+                <Video className="w-4 h-4 mr-2" />
+                {creating ? "Creating..." : "Start meeting"}
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Join Meeting */}
+          <Card className="border border-slate-200 shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+                  <Users className="w-4 h-4 text-green-600" />
+                </div>
+                Join Meeting
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Input
+                placeholder="Enter meeting code"
+                value={code}
+                onChange={(e) => setCode(e.target.value.toUpperCase())}
+                className="border-slate-200 font-mono tracking-widest"
+                maxLength={8}
+              />
+              {joinError && <p className="text-red-500 text-xs">Invalid meeting code</p>}
+              <Button
+                variant="outline"
+                className="w-full border-green-200 text-green-700 hover:bg-green-50"
+                disabled={code.length !== 8 || joining}
+                onClick={() => joinMeeting(code)}
+              >
+                {joining ? "Joining..." : "Join meeting"}
+              </Button>
+            </CardContent>
+          </Card>
         </div>
       </main>
     </div>

@@ -7,6 +7,9 @@ import ProtectedRoute from "@/routes/ProtectedRoute";
 import LoginPage from "@/pages/auth/LoginPage";
 import SignupPage from "@/pages/auth/SignupPage";
 import DashboardPage from "@/pages/dashboard/DashboardPage";
+import { SocketProvider } from "@/socket/SocketProvider";
+import LobbyPage from "@/pages/meeting/LobbyPage";
+import VideoRoomPage from "@/pages/meeting/VideoRoomPage";
 import "./index.css";
 
 const queryClient = new QueryClient({
@@ -18,21 +21,25 @@ const queryClient = new QueryClient({
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <Routes>
-          {/* Public routes */}
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/signup" element={<SignupPage />} />
+      <SocketProvider>
+        <BrowserRouter>
+          <Routes>
+            {/* Public routes */}
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/signup" element={<SignupPage />} />
 
           {/* Protected routes */}
           <Route element={<ProtectedRoute />}>
             <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/lobby" element={<LobbyPage />} />
+            <Route path="/video-room" element={<VideoRoomPage />} />
           </Route>
 
           {/* Default redirect */}
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </BrowserRouter>
+      </SocketProvider>
       <ReactQueryDevtools initialIsOpen={false} />
     </QueryClientProvider>
   </React.StrictMode>
