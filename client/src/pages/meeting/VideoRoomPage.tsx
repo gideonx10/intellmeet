@@ -3,8 +3,10 @@ import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import Peer from "simple-peer";
 import { useSocket } from "@/socket/useSocket";
 import { useAuthStore } from "@/store/authStore";
-import { Mic, MicOff, Video, VideoOff, PhoneOff, MessageSquare} from "lucide-react";
-import ChatPanel from "@/components/meeting/ChatPanel"
+import { Mic, MicOff, Video, VideoOff, PhoneOff, MessageSquare, Monitor, Circle} from "lucide-react";
+import ChatPanel from "@/components/meeting/ChatPanel";
+import { useScreenShare } from "@/hooks/useScreenShare";
+import { useRecording } from "@/hooks/useRecording";
 
 interface PeerData {
   peer: Peer.Instance;
@@ -18,12 +20,14 @@ export default function VideoRoomPage() {
   const [searchParams] = useSearchParams();
   const socket = useSocket();
   const { user } = useAuthStore();
-
+  
   const navigate = useNavigate();
 
   const myVideoRef = useRef<HTMLVideoElement>(null);
   const myStreamRef = useRef<MediaStream | null>(null);
   const peersRef = useRef<Map<string, PeerData>>(new Map());
+  const { isSharing, toggleScreenShare } = useScreenShare(myStreamRef, peersRef);
+  const { isRecording, recordingTime, toggleRecording } = useRecording(myStreamRef);
 
   const [peers, setPeers] = useState<PeerData[]>([]);
   const [micOn, setMicOn] = useState(searchParams.get("mic") !== "false");
@@ -172,6 +176,21 @@ export default function VideoRoomPage() {
       <div className="bg-slate-800 border-t border-slate-700 px-6 py-4 flex items-center justify-center gap-4">
         <ControlBtn onClick={toggleMic} active={micOn} icon={micOn ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />} />
         <ControlBtn onClick={toggleCam} active={camOn} icon={camOn ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />} />
+        <button
+          onClick={toggleScreenShare}
+          className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${isSharing ? "bg-blue-500 hover:bg-blue-600 text-white" : "bg-slate-700 hover:bg-slate-600 text-white"}`}
+          title={isSharing ? "Stop sharing" : "Share screen"}
+        >
+          <Monitor className="w-5 h-5" />
+        </button>
+        <button
+          onClick={toggleRecording}
+          className={`flex items-center gap-2 px-4 h-12 rounded-full transition-colors ${isRecording ? "bg-red-500 hover:bg-red-600 text-white" : "bg-slate-700 hover:bg-slate-600 text-white"}`}
+          title={isRecording ? "Stop recording" : "Start recording"}
+        >
+          <Circle className={`w-3 h-3 ${isRecording ? "fill-white animate-pulse" : "fill-slate-400"}`} />
+          <span className="text-sm font-mono">{isRecording ? recordingTime : "REC"}</span>
+        </button>
         <ControlBtn onClick={() => setChatOpen((p) => !p)} active={!chatOpen} icon={<MessageSquare className="w-5 h-5" />} />
         <button onClick={handleLeave} className="w-12 h-12 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center">
           <PhoneOff className="w-5 h-5" />
