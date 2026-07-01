@@ -26,7 +26,7 @@ export const useJoinMeeting = () => {
 export const useGetMeeting = (id: string) =>
   useQuery({
     queryKey: ["meeting", id],
-    queryFn: () => api.get(`/meetings/${id}`).then((r) => r.data.meeting),
+    queryFn: () => api.get(`/meetings/${id}`).then((r) => r.data.meeting as Meeting),
     enabled: !!id,
   });
 
@@ -44,10 +44,18 @@ export const useStartMeeting = (id: string) => {
   });
 };
 
+export const useToggleActionItem = (meetingId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (itemId: string) => api.patch(`/meetings/${meetingId}/actionItems/${itemId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["meeting", meetingId] }),
+  });
+};
+
 export const useEndMeeting = () => {
   const navigate = useNavigate();
   return useMutation({
     mutationFn: (id: string) => api.patch(`/meetings/${id}/end`),
-    onSuccess: () => navigate("/dashboard"),
+    onSuccess: (_data, id) => navigate(`/meeting/${id}/summary`),
   });
 };

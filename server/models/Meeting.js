@@ -34,6 +34,7 @@ const meetingSchema = new mongoose.Schema({
   startedAt: { type: Date },
   endedAt: { type: Date },
   recording: { type: String, default: '' },
+  transcript: { type: String, default: '' },
   summary: { type: String, default: '' },
   actionItems: [{ text: String, assignee: String, done: { type: Boolean, default: false } }],
 }, { timestamps: true });

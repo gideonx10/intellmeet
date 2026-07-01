@@ -3,11 +3,13 @@ import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import Peer from "simple-peer";
 import { useSocket } from "@/socket/useSocket";
 import { useAuthStore } from "@/store/authStore";
-import { Mic, MicOff, Video, VideoOff, PhoneOff, MessageSquare, Monitor, Circle, Users } from "lucide-react";
+import { Mic, MicOff, Video, VideoOff, PhoneOff, MessageSquare, Monitor, Circle, Users, Captions } from "lucide-react";
 import ChatPanel from "@/components/meeting/ChatPanel";
 import ParticipantsList from "@/components/meeting/ParticipantsList";
 import { useScreenShare } from "@/hooks/useScreenShare";
 import { useRecording } from "@/hooks/useRecording";
+import { useTranscription } from "@/hooks/useTranscription";
+import { useEndMeeting, useGetMeeting } from "@/hooks/useMeetings";
 
 interface PeerData {
   peer: Peer.Instance;
@@ -31,6 +33,10 @@ export default function VideoRoomPage() {
   const peersRef = useRef<Map<string, PeerData>>(new Map());
   const { isSharing, toggleScreenShare } = useScreenShare(myStreamRef, peersRef);
   const { isRecording, recordingTime, toggleRecording } = useRecording(myStreamRef);
+  const { isTranscribing, transcript, toggleTranscription } = useTranscription(id!, myStreamRef);
+  const { data: meeting } = useGetMeeting(id!);
+  const { mutate: endMeeting } = useEndMeeting();
+  const isHost = meeting?.host?._id === user?.id;
 
   const [peers, setPeers] = useState<PeerData[]>([]);
   const [micOn, setMicOn] = useState(searchParams.get("mic") !== "false");
@@ -175,7 +181,12 @@ export default function VideoRoomPage() {
   const handleLeave = () => {
     socket?.emit("leave-room", { roomId });
     myStreamRef.current?.getTracks().forEach((t) => t.stop());
-    navigate("/dashboard");
+
+    if (isHost) {
+      endMeeting(id!);
+    } else {
+      navigate("/dashboard");
+    }
   };
 
 
@@ -238,9 +249,22 @@ export default function VideoRoomPage() {
         )}
       </div>
 
+      {transcript && (
+        <div className="bg-black/70 text-white text-sm px-6 py-2 max-h-24 overflow-y-auto">
+          {transcript}
+        </div>
+      )}
+
       <div className="bg-slate-800 border-t border-slate-700 px-6 py-4 flex items-center justify-center gap-4">
         <ControlBtn onClick={toggleMic} active={micOn} icon={micOn ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />} />
         <ControlBtn onClick={toggleCam} active={camOn} icon={camOn ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />} />
+        <button
+          onClick={toggleTranscription}
+          className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${isTranscribing ? "bg-blue-500 hover:bg-blue-600 text-white" : "bg-slate-700 hover:bg-slate-600 text-white"}`}
+          title={isTranscribing ? "Stop live captions" : "Start live captions"}
+        >
+          <Captions className="w-5 h-5" />
+        </button>
         <button
           onClick={toggleScreenShare}
           className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${isSharing ? "bg-blue-500 hover:bg-blue-600 text-white" : "bg-slate-700 hover:bg-slate-600 text-white"}`}
@@ -263,7 +287,11 @@ export default function VideoRoomPage() {
           badge={allVideos.length}
         />
         <ControlBtn onClick={() => setChatOpen((p) => !p)} active={!chatOpen} icon={<MessageSquare className="w-5 h-5" />} />
-        <button onClick={handleLeave} className="w-12 h-12 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center">
+        <button
+          onClick={handleLeave}
+          title={isHost ? "End meeting for all" : "Leave meeting"}
+          className="w-12 h-12 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center"
+        >
           <PhoneOff className="w-5 h-5" />
         </button>
       </div>

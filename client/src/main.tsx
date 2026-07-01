@@ -11,6 +11,7 @@ import DashboardPage from "@/pages/dashboard/DashboardPage";
 import { SocketProvider } from "@/socket/SocketProvider";
 import LobbyPage from "@/pages/meeting/LobbyPage";
 import VideoRoomPage from "@/pages/meeting/VideoRoomPage";
+import PostMeetingSummaryPage from "@/pages/meeting/PostMeetingSummaryPage";
 import "./index.css";
 
 const queryClient = new QueryClient({
@@ -35,6 +36,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/lobby/:id" element={<LobbyPage />} />
               <Route path="/meeting/:id" element={<VideoRoomPage />} />
+              <Route path="/meeting/:id/summary" element={<PostMeetingSummaryPage />} />
             </Route>
 
             {/* Default redirect */}

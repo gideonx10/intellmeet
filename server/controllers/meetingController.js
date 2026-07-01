@@ -173,6 +173,30 @@ export const endMeeting = async (req, res) => {
   }
 };
 
+// PATCH /api/meetings/:id/actionItems/:itemId
+export const toggleActionItem = async (req, res) => {
+  try {
+    const meeting = await Meeting.findById(req.params.id);
+
+    if (!meeting) {
+      return res.status(404).json({ message: 'Meeting not found' });
+    }
+
+    const item = meeting.actionItems.id(req.params.itemId);
+    if (!item) {
+      return res.status(404).json({ message: 'Action item not found' });
+    }
+
+    item.done = !item.done;
+    await meeting.save();
+    await deleteCache(`meeting:${meeting._id}`);
+
+    res.status(200).json({ actionItems: meeting.actionItems });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 // DELETE /api/meetings/:id
 export const deleteMeeting = async (req, res) => {
   try {
