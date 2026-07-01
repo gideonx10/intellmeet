@@ -1,20 +1,23 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { isAxiosError } from "axios";
 import { useAuthStore } from "@/store/authStore";
 import { useLogout } from "@/hooks/useAuth";
 import { useCreateMeeting, useJoinMeeting, useMyMeetings } from "@/hooks/useMeetings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { LogOut, Video, Users, Plus, CalendarClock, Sparkles } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import NotificationBell from "@/components/layout/NotificationBell";
+import { LogOut, Video, Users, Plus, CalendarClock, Sparkles, LayoutGrid } from "lucide-react";
 
 export default function DashboardPage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const { mutate: logout } = useLogout();
-  const { mutate: createMeeting, isPending: creating } = useCreateMeeting();
+  const { mutate: createMeeting, isPending: creating, error: createError } = useCreateMeeting();
   const { mutate: joinMeeting, isPending: joining, error: joinError } = useJoinMeeting();
-  const { data: meetings, isLoading: loadingMeetings } = useMyMeetings();
+  const { data: meetings, isLoading: loadingMeetings, error: meetingsError } = useMyMeetings();
   const [title, setTitle] = useState("");
   const [code, setCode] = useState("");
 
@@ -26,6 +29,10 @@ export default function DashboardPage() {
           <span className="font-semibold text-slate-800">IntellMeet</span>
         </div>
         <div className="flex items-center gap-3">
+          <Button variant="ghost" size="sm" onClick={() => navigate("/workspace")}>
+            <LayoutGrid className="w-4 h-4 mr-1" /> Workspace
+          </Button>
+          <NotificationBell />
           <span className="text-sm text-slate-600">{user?.name}</span>
           <Button variant="outline" size="sm" onClick={() => logout()}>
             <LogOut className="w-4 h-4 mr-1" /> Logout
@@ -57,6 +64,11 @@ export default function DashboardPage() {
                 onChange={(e) => setTitle(e.target.value)}
                 className="border-slate-200"
               />
+              {createError && (
+                <p className="text-red-500 text-xs">
+                  {isAxiosError(createError) ? createError.response?.data?.message || "Failed to create meeting" : "Failed to create meeting"}
+                </p>
+              )}
               <Button
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white"
                 disabled={!title.trim() || creating}
@@ -86,7 +98,11 @@ export default function DashboardPage() {
                 className="border-slate-200 font-mono tracking-widest"
                 maxLength={8}
               />
-              {joinError && <p className="text-red-500 text-xs">Invalid meeting code</p>}
+              {joinError && (
+                <p className="text-red-500 text-xs">
+                  {isAxiosError(joinError) ? joinError.response?.data?.message || "Invalid meeting code" : "Invalid meeting code"}
+                </p>
+              )}
               <Button
                 variant="outline"
                 className="w-full border-green-200 text-green-700 hover:bg-green-50"
@@ -103,7 +119,15 @@ export default function DashboardPage() {
           <h3 className="text-sm font-semibold text-slate-700 mb-3">Recent Meetings</h3>
 
           {loadingMeetings ? (
-            <p className="text-sm text-slate-400">Loading...</p>
+            <div className="space-y-2">
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+            </div>
+          ) : meetingsError ? (
+            <p className="text-sm text-red-500">
+              {isAxiosError(meetingsError) ? meetingsError.response?.data?.message || "Failed to load meetings" : "Failed to load meetings"}
+            </p>
           ) : meetings && meetings.length > 0 ? (
             <div className="space-y-2">
               {meetings.map((m) => (

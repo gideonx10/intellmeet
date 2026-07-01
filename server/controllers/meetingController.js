@@ -34,6 +34,7 @@ export const getMyMeetings = async (req, res) => {
       ],
     })
       .populate('host', 'name avatar')
+      .populate('participants.user', 'name avatar')
       .sort({ createdAt: -1 });
 
     res.status(200).json({ meetings });

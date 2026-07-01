@@ -12,7 +12,10 @@ import userRoutes from './routes/userRoutes.js';
 import meetingRoutes from './routes/meetingRoutes.js';
 import chatRoutes from './routes/chatRoutes.js';
 import aiRoutes from './routes/aiRoutes.js';
+import taskRoutes from './routes/taskRoutes.js';
+import notificationRoutes from './routes/notificationRoutes.js';
 import ChatMessage from './models/ChatMessage.js';
+import { setIO } from './socket/io.js';
 
 dotenv.config();
 connectDB();
@@ -22,6 +25,7 @@ const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: { origin: 'http://localhost:5173', methods: ['GET', 'POST'] }
 });
+setIO(io);
 
 app.use(cors({ origin: 'http://localhost:5173' }));
 app.use(helmet());
@@ -32,6 +36,8 @@ app.use('/api/users', userRoutes);
 app.use('/api/meetings', meetingRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/tasks', taskRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 app.get('/', (req, res) => {
   res.json({ message: 'IntellMeet API running' });
