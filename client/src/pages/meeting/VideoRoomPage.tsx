@@ -3,8 +3,9 @@ import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import Peer from "simple-peer";
 import { useSocket } from "@/socket/useSocket";
 import { useAuthStore } from "@/store/authStore";
-import { Mic, MicOff, Video, VideoOff, PhoneOff, MessageSquare, Monitor, Circle} from "lucide-react";
+import { Mic, MicOff, Video, VideoOff, PhoneOff, MessageSquare, Monitor, Circle, Users } from "lucide-react";
 import ChatPanel from "@/components/meeting/ChatPanel";
+import ParticipantsList from "@/components/meeting/ParticipantsList";
 import { useScreenShare } from "@/hooks/useScreenShare";
 import { useRecording } from "@/hooks/useRecording";
 
@@ -13,6 +14,8 @@ interface PeerData {
   socketId: string;
   userName: string;
   stream?: MediaStream;
+  micOn: boolean;
+  camOn: boolean;
 }
 
 export default function VideoRoomPage() {
@@ -33,6 +36,7 @@ export default function VideoRoomPage() {
   const [micOn, setMicOn] = useState(searchParams.get("mic") !== "false");
   const [camOn, setCamOn] = useState(searchParams.get("cam") !== "false");
   const [chatOpen, setChatOpen] = useState(false);
+  const [participantsOpen, setParticipantsOpen] = useState(false);
   
   const roomId = id!;
 
@@ -56,36 +60,66 @@ export default function VideoRoomPage() {
       }
 
       // Join the socket room
-      socket.emit("join-room", { roomId, userId: user?.id, userName: user?.name });
+      socket.emit("join-room", { roomId, userId: user?.id, userName: user?.name, micOn, camOn });
     };
 
     initMedia();
 
     // Someone already in room — we initiate the call to them
-    socket.on("room-participants", (participants: { socketId: string; userName: string }[]) => {
-      participants.forEach(({ socketId, userName }) => {
-        const peer = new Peer({ initiator: true, trickle: true, stream: myStreamRef.current || undefined });
+    socket.on(
+      "room-participants",
+      (participants: { socketId: string; userName: string; micOn?: boolean; camOn?: boolean }[]) => {
+        participants.forEach(({ socketId, userName, micOn: peerMicOn, camOn: peerCamOn }) => {
+          const peer = new Peer({ initiator: true, trickle: true, stream: myStreamRef.current || undefined });
 
-        peer.on("signal", (signal) => socket.emit("offer", { to: socketId, offer: signal }));
+          peer.on("signal", (signal) => socket.emit("offer", { to: socketId, offer: signal }));
+          peer.on("stream", (stream) => handleStream(socketId, stream));
+          peer.on("error", (e) => console.error("Peer error", e));
+
+          const peerData = { peer, socketId, userName, micOn: peerMicOn ?? true, camOn: peerCamOn ?? true };
+          peersRef.current.set(socketId, peerData);
+          setPeers((prev) => [...prev, peerData]);
+        });
+      }
+    );
+
+    // New peer joined — they initiate; we answer
+    socket.on(
+      "user-joined",
+      ({
+        socketId,
+        userName,
+        micOn: peerMicOn,
+        camOn: peerCamOn,
+      }: {
+        socketId: string;
+        userName: string;
+        micOn?: boolean;
+        camOn?: boolean;
+      }) => {
+        const peer = new Peer({ initiator: false, trickle: true, stream: myStreamRef.current || undefined });
+
+        peer.on("signal", (signal) => socket.emit("answer", { to: socketId, answer: signal }));
         peer.on("stream", (stream) => handleStream(socketId, stream));
         peer.on("error", (e) => console.error("Peer error", e));
 
-        peersRef.current.set(socketId, { peer, socketId, userName });
-        setPeers((prev) => [...prev, { peer, socketId, userName }]);
-      });
-    });
+        const peerData = { peer, socketId, userName, micOn: peerMicOn ?? true, camOn: peerCamOn ?? true };
+        peersRef.current.set(socketId, peerData);
+        setPeers((prev) => [...prev, peerData]);
+      }
+    );
 
-    // New peer joined — they initiate; we answer
-    socket.on("user-joined", ({ socketId, userName }: { socketId: string; userName: string }) => {
-      const peer = new Peer({ initiator: false, trickle: true, stream: myStreamRef.current || undefined });
-
-      peer.on("signal", (signal) => socket.emit("answer", { to: socketId, answer: signal }));
-      peer.on("stream", (stream) => handleStream(socketId, stream));
-      peer.on("error", (e) => console.error("Peer error", e));
-
-      peersRef.current.set(socketId, { peer, socketId, userName });
-      setPeers((prev) => [...prev, { peer, socketId, userName }]);
-    });
+    // Remote peer toggled mic/camera
+    socket.on(
+      "media-state-changed",
+      ({ socketId, micOn: peerMicOn, camOn: peerCamOn }: { socketId: string; micOn: boolean; camOn: boolean }) => {
+        const entry = peersRef.current.get(socketId);
+        if (entry) peersRef.current.set(socketId, { ...entry, micOn: peerMicOn, camOn: peerCamOn });
+        setPeers((prev) =>
+          prev.map((p) => (p.socketId === socketId ? { ...p, micOn: peerMicOn, camOn: peerCamOn } : p))
+        );
+      }
+    );
 
     // Receive offer — signal to existing peer
     socket.on("offer", ({ from, offer }: { from: string; offer: Peer.SignalData }) => {
@@ -116,6 +150,7 @@ export default function VideoRoomPage() {
       peersRef.current.clear();
       socket.off("room-participants");
       socket.off("user-joined");
+      socket.off("media-state-changed");
       socket.off("offer");
       socket.off("answer");
       socket.off("ice-candidate");
@@ -124,13 +159,17 @@ export default function VideoRoomPage() {
   }, [socket]);
 
   const toggleMic = () => {
-    myStreamRef.current?.getAudioTracks().forEach((t) => (t.enabled = !micOn));
-    setMicOn((p) => !p);
+    const next = !micOn;
+    myStreamRef.current?.getAudioTracks().forEach((t) => (t.enabled = next));
+    setMicOn(next);
+    socket?.emit("media-state-changed", { roomId, micOn: next, camOn });
   };
 
   const toggleCam = () => {
-    myStreamRef.current?.getVideoTracks().forEach((t) => (t.enabled = !camOn));
-    setCamOn((p) => !p);
+    const next = !camOn;
+    myStreamRef.current?.getVideoTracks().forEach((t) => (t.enabled = next));
+    setCamOn(next);
+    socket?.emit("media-state-changed", { roomId, micOn, camOn: next });
   };
 
   const handleLeave = () => {
@@ -141,7 +180,7 @@ export default function VideoRoomPage() {
 
 
   const allVideos = [
-    { socketId: "me", userName: user?.name || "You", stream: null, isMe: true },
+    { socketId: "me", userName: user?.name || "You", stream: null, isMe: true, micOn, camOn },
     ...peers.map((p) => ({ ...p, isMe: false })),
   ];
 
@@ -152,19 +191,45 @@ export default function VideoRoomPage() {
           className="flex-1 p-4 grid gap-3 content-start"
           style={{ gridTemplateColumns: `repeat(${Math.min(allVideos.length, 3)}, 1fr)` }}
         >
-          {allVideos.map(({ socketId, userName, stream, isMe }) => (
+          {allVideos.map(({ socketId, userName, stream, isMe, micOn: peerMicOn, camOn: peerCamOn }) => (
             <div key={socketId} className="relative bg-slate-800 rounded-xl overflow-hidden aspect-video">
               {isMe ? (
                 <video ref={myVideoRef} autoPlay muted playsInline className="w-full h-full object-cover scale-x-[-1]" />
               ) : (
                 <RemoteVideo stream={stream} />
               )}
+              {!peerCamOn && (
+                <div className="absolute inset-0 flex items-center justify-center bg-slate-800">
+                  <div className="w-14 h-14 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xl font-semibold">
+                    {userName?.charAt(0).toUpperCase() || "?"}
+                  </div>
+                </div>
+              )}
               <div className="absolute bottom-2 left-2 bg-black/50 text-white text-xs px-2 py-0.5 rounded-full">
                 {userName} {isMe ? "(You)" : ""}
               </div>
+              {!peerMicOn && (
+                <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-red-500 flex items-center justify-center">
+                  <MicOff className="w-3.5 h-3.5 text-white" />
+                </div>
+              )}
             </div>
           ))}
         </div>
+
+        {participantsOpen && (
+          <div className="w-80 flex-shrink-0 h-full">
+            <ParticipantsList
+              participants={allVideos.map(({ socketId, userName, isMe, micOn: pMicOn, camOn: pCamOn }) => ({
+                socketId,
+                userName,
+                isMe,
+                micOn: pMicOn,
+                camOn: pCamOn,
+              }))}
+            />
+          </div>
+        )}
 
         {chatOpen && (
           <div className="w-80 flex-shrink-0 h-full">
@@ -191,6 +256,12 @@ export default function VideoRoomPage() {
           <Circle className={`w-3 h-3 ${isRecording ? "fill-white animate-pulse" : "fill-slate-400"}`} />
           <span className="text-sm font-mono">{isRecording ? recordingTime : "REC"}</span>
         </button>
+        <ControlBtn
+          onClick={() => setParticipantsOpen((p) => !p)}
+          active={!participantsOpen}
+          icon={<Users className="w-5 h-5" />}
+          badge={allVideos.length}
+        />
         <ControlBtn onClick={() => setChatOpen((p) => !p)} active={!chatOpen} icon={<MessageSquare className="w-5 h-5" />} />
         <button onClick={handleLeave} className="w-12 h-12 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center">
           <PhoneOff className="w-5 h-5" />
@@ -208,10 +279,28 @@ function RemoteVideo({ stream }: { stream: MediaStream | null | undefined }) {
   return <video ref={ref} autoPlay playsInline className="w-full h-full object-cover" />;
 }
 
-function ControlBtn({ onClick, active, icon }: { onClick: () => void; active: boolean; icon: React.ReactNode }) {
+function ControlBtn({
+  onClick,
+  active,
+  icon,
+  badge,
+}: {
+  onClick: () => void;
+  active: boolean;
+  icon: React.ReactNode;
+  badge?: number;
+}) {
   return (
-    <button onClick={onClick} className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${active ? "bg-slate-700 hover:bg-slate-600 text-white" : "bg-red-500 hover:bg-red-600 text-white"}`}>
+    <button
+      onClick={onClick}
+      className={`relative w-12 h-12 rounded-full flex items-center justify-center transition-colors ${active ? "bg-slate-700 hover:bg-slate-600 text-white" : "bg-red-500 hover:bg-red-600 text-white"}`}
+    >
       {icon}
+      {!!badge && (
+        <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-blue-500 text-white text-xs font-semibold flex items-center justify-center">
+          {badge}
+        </span>
+      )}
     </button>
   );
 }

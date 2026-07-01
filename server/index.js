@@ -42,17 +42,19 @@ io.on('connection', (socket) => {
   console.log('Socket connected:', socket.id);
 
   // User joins a meeting room
-  socket.on('join-room', ({ roomId, userId, userName }) => {
+  socket.on('join-room', ({ roomId, userId, userName, micOn, camOn }) => {
     socket.join(roomId);
 
     if (!rooms.has(roomId)) rooms.set(roomId, new Map());
-    rooms.get(roomId).set(socket.id, { userId, userName });
+    rooms.get(roomId).set(socket.id, { userId, userName, micOn, camOn });
 
     // Tell everyone else in the room that a new peer joined
     socket.to(roomId).emit('user-joined', {
       socketId: socket.id,
       userId,
       userName,
+      micOn,
+      camOn,
     });
 
     // Send current participants list to the new joiner
@@ -60,6 +62,18 @@ io.on('connection', (socket) => {
       .filter(([id]) => id !== socket.id)
       .map(([id, data]) => ({ socketId: id, ...data }));
     socket.emit('room-participants', participants);
+  });
+
+  // Broadcast mic/camera toggle to the room
+  socket.on('media-state-changed', ({ roomId, micOn, camOn }) => {
+    const room = rooms.get(roomId);
+    if (room?.has(socket.id)) {
+      const participant = room.get(socket.id);
+      participant.micOn = micOn;
+      participant.camOn = camOn;
+    }
+
+    socket.to(roomId).emit('media-state-changed', { socketId: socket.id, micOn, camOn });
   });
 
   // WebRTC: forward SDP offer to a specific peer

@@ -46,7 +46,7 @@ export default function LobbyPage() {
   const handleJoin = () => {
     // Stop lobby stream — VideoRoom will get its own stream
     streamRef.current?.getTracks().forEach((t) => t.stop());
-    navigate(`/video-room/${id}?code=${searchParams.get("code")}&mic=${micOn}&cam=${camOn}`);
+    navigate(`/meeting/${id}?code=${searchParams.get("code")}&mic=${micOn}&cam=${camOn}`);
   };
 
   return (

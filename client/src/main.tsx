@@ -34,7 +34,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route element={<ProtectedRoute />}>
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/lobby/:id" element={<LobbyPage />} />
-              <Route path="/video-room/:id" element={<VideoRoomPage />} />
+              <Route path="/meeting/:id" element={<VideoRoomPage />} />
             </Route>
 
             {/* Default redirect */}

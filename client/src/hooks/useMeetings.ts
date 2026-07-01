@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
+import type { Meeting } from "@/types/meeting";
 
 export const useCreateMeeting = () => {
   const navigate = useNavigate();
@@ -27,6 +28,12 @@ export const useGetMeeting = (id: string) =>
     queryKey: ["meeting", id],
     queryFn: () => api.get(`/meetings/${id}`).then((r) => r.data.meeting),
     enabled: !!id,
+  });
+
+export const useMyMeetings = () =>
+  useQuery({
+    queryKey: ["meetings"],
+    queryFn: () => api.get("/meetings").then((r) => r.data.meetings as Meeting[]),
   });
 
 export const useStartMeeting = (id: string) => {
