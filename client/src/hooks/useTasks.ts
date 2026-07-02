@@ -13,6 +13,9 @@ interface CreateTaskInput {
   assignee: string;
   meeting?: string;
   dueDate?: string;
+  // When set, and that action item was already converted, the server updates the
+  // existing task's assignee/dueDate instead of creating a duplicate.
+  actionItemId?: string;
 }
 
 export const useCreateTask = () => {

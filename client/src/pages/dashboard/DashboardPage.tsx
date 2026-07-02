@@ -28,14 +28,14 @@ export default function DashboardPage() {
           <span className="text-xl">🤝</span>
           <span className="font-semibold text-slate-800">IntellMeet</span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <Button variant="ghost" size="sm" onClick={() => navigate("/workspace")}>
-            <LayoutGrid className="w-4 h-4 mr-1" /> Workspace
+            <LayoutGrid className="w-4 h-4 sm:mr-1" /> <span className="hidden sm:inline">Workspace</span>
           </Button>
           <NotificationBell />
-          <span className="text-sm text-slate-600">{user?.name}</span>
+          <span className="hidden sm:inline text-sm text-slate-600">{user?.name}</span>
           <Button variant="outline" size="sm" onClick={() => logout()}>
-            <LogOut className="w-4 h-4 mr-1" /> Logout
+            <LogOut className="w-4 h-4 sm:mr-1" /> <span className="hidden sm:inline">Logout</span>
           </Button>
         </div>
       </header>

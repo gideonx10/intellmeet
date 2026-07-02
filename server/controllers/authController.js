@@ -23,12 +23,10 @@ export const signup = async (req, res) => {
   } 
   catch (err) {
     console.error("SIGNUP ERROR:");
-    console.error(err);
     console.error(err.stack);
 
     res.status(500).json({
-        message: err.message,
-        stack: err.stack
+        message: 'Something went wrong. Please try again.'
     });
 }
 

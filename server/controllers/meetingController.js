@@ -1,5 +1,6 @@
 import { getCache, setCache, deleteCache } from "../utils/cache.js";
 import Meeting from '../models/Meeting.js';
+import { getIO } from '../socket/io.js';
 
 // POST /api/meetings — create meeting
 export const createMeeting = async (req, res) => {
@@ -61,7 +62,8 @@ export const getMeeting = async (req, res) => {
     // Fetch from MongoDB
     const meeting = await Meeting.findById(req.params.id)
       .populate('host', 'name email avatar')
-      .populate('participants.user', 'name avatar');
+      .populate('participants.user', 'name avatar')
+      .populate({ path: 'actionItems.taskId', populate: { path: 'assignee', select: 'name avatar' } });
 
     if (!meeting) {
       return res.status(404).json({
@@ -164,6 +166,10 @@ export const endMeeting = async (req, res) => {
 
     // Clear cached version
     await deleteCache(`meeting:${meeting._id}`);
+
+    // Tell everyone still in the room the meeting is over so they get redirected too
+    const io = getIO();
+    if (io) io.to(meeting._id.toString()).emit('meeting-ended', { meetingId: meeting._id.toString() });
 
     res.status(200).json({
       message: 'Meeting ended',

@@ -36,7 +36,14 @@ const meetingSchema = new mongoose.Schema({
   recording: { type: String, default: '' },
   transcript: { type: String, default: '' },
   summary: { type: String, default: '' },
-  actionItems: [{ text: String, assignee: String, done: { type: Boolean, default: false } }],
+  actionItems: [{
+    text: String,
+    assignee: String,
+    done: { type: Boolean, default: false },
+    // Set once an action item is converted to a Task, so the summary page can show the
+    // task's live assignee/status instead of the stale AI-suggested `assignee` string.
+    taskId: { type: mongoose.Schema.Types.ObjectId, ref: 'Task', default: null },
+  }],
 }, { timestamps: true });
 
 const Meeting = mongoose.model('Meeting', meetingSchema);

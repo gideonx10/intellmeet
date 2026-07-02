@@ -1,31 +1,66 @@
 import Task from '../models/Task.js';
 import Notification from '../models/Notification.js';
+import Meeting from '../models/Meeting.js';
+import { deleteCache } from '../utils/cache.js';
 import { getIO } from '../socket/io.js';
 
 // POST /api/tasks
+// When called with an actionItemId whose action item has already been converted to a task
+// (actionItem.taskId set), this updates that existing task's assignee/dueDate instead of
+// creating a duplicate — covers both "Convert to Task" and "Reassign" from the summary page.
 export const createTask = async (req, res) => {
   try {
-    const { title, description, assignee, meeting, dueDate } = req.body;
+    const { title, description, assignee, meeting: meetingId, dueDate, actionItemId } = req.body;
 
-    const task = await Task.create({
-      title,
-      description,
-      assignee,
-      meeting,
-      dueDate,
-      createdBy: req.user._id,
-    });
+    let meetingDoc = null;
+    let actionItem = null;
+    if (meetingId && actionItemId) {
+      meetingDoc = await Meeting.findById(meetingId);
+      if (!meetingDoc) {
+        return res.status(404).json({ message: 'Meeting not found' });
+      }
+      actionItem = meetingDoc.actionItems.id(actionItemId);
+      if (!actionItem) {
+        return res.status(404).json({ message: 'Action item not found' });
+      }
+    }
+
+    let task = actionItem?.taskId ? await Task.findById(actionItem.taskId) : null;
+    const isReassignment = !!task;
+
+    if (task) {
+      task.assignee = assignee;
+      task.dueDate = dueDate;
+      await task.save();
+    } else {
+      task = await Task.create({
+        title,
+        description,
+        assignee,
+        meeting: meetingId,
+        dueDate,
+        createdBy: req.user._id,
+      });
+    }
 
     await task.populate('assignee', 'name avatar');
     await task.populate('meeting', 'title');
     await task.populate('createdBy', 'name');
 
+    if (actionItem && !isReassignment) {
+      actionItem.taskId = task._id;
+      await meetingDoc.save();
+    }
+    if (meetingId) {
+      await deleteCache(`meeting:${meetingId}`);
+    }
+
     if (assignee && assignee.toString() !== req.user._id.toString()) {
       const notification = await Notification.create({
         recipient: assignee,
         type: 'task_assigned',
-        message: `You've been assigned: ${title}`,
-        meetingId: meeting || undefined,
+        message: isReassignment ? `You've been reassigned: ${task.title}` : `You've been assigned: ${task.title}`,
+        meetingId: meetingId || undefined,
       });
 
       const io = getIO();
@@ -37,7 +72,7 @@ export const createTask = async (req, res) => {
       }
     }
 
-    res.status(201).json({ message: 'Task created', task });
+    res.status(isReassignment ? 200 : 201).json({ message: isReassignment ? 'Task reassigned' : 'Task created', task });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

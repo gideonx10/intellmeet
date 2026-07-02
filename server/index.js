@@ -15,6 +15,8 @@ import aiRoutes from './routes/aiRoutes.js';
 import taskRoutes from './routes/taskRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import ChatMessage from './models/ChatMessage.js';
+import Meeting from './models/Meeting.js';
+import { deleteCache } from './utils/cache.js';
 import { setIO } from './socket/io.js';
 
 dotenv.config();
@@ -50,11 +52,27 @@ io.on('connection', (socket) => {
   console.log('Socket connected:', socket.id);
 
   // User joins a meeting room
-  socket.on('join-room', ({ roomId, userId, userName, micOn, camOn }) => {
+  socket.on('join-room', async ({ roomId, userId, userName, micOn, camOn }) => {
     socket.join(roomId);
 
     if (!rooms.has(roomId)) rooms.set(roomId, new Map());
     rooms.get(roomId).set(socket.id, { userId, userName, micOn, camOn });
+
+    // The `rooms` map above is purely in-memory (for WebRTC signaling) and is never
+    // persisted. Without this, meeting.participants only ever contains the host —
+    // guests who join by code are never recorded, so features like the task-assignee
+    // dropdown ("recent meeting participants") only ever see the host as an option.
+    if (userId && roomId) {
+      try {
+        await Meeting.updateOne(
+          { _id: roomId, 'participants.user': { $ne: userId } },
+          { $push: { participants: { user: userId, role: 'participant' } } }
+        );
+        await deleteCache(`meeting:${roomId}`);
+      } catch (err) {
+        console.error('Failed to persist meeting participant:', err);
+      }
+    }
 
     // Tell everyone else in the room that a new peer joined
     socket.to(roomId).emit('user-joined', {
@@ -70,6 +88,15 @@ io.on('connection', (socket) => {
       .filter(([id]) => id !== socket.id)
       .map(([id, data]) => ({ socketId: id, ...data }));
     socket.emit('room-participants', participants);
+  });
+
+  // Broadcast screen-share start/stop to the room — the peer connection itself carries the
+  // actual screen track (added/removed via simple-peer's addStream/removeStream, renegotiated
+  // through the existing offer/answer/ice-candidate relay below), this just tells remote UIs
+  // when to show/hide that participant's screen-share tile rather than inferring it from
+  // track-ended events, which are flakier to react to.
+  socket.on('screen-share-changed', ({ roomId, isSharing }) => {
+    socket.to(roomId).emit('screen-share-changed', { socketId: socket.id, isSharing });
   });
 
   // Broadcast mic/camera toggle to the room

@@ -1,7 +1,44 @@
 import { useCallback, useRef, useState } from "react";
 import api from "@/lib/api";
 
+// Reverted to the 30s chunks verified working in QA. A shorter (12s) window was tried for
+// latency but shorter chunks give Whisper less linguistic context per call, which measurably
+// increased hallucination (stray text in random languages, phantom phrases) on real testing.
+// Correctness matters more here than latency — the transcript quality gates whether the AI
+// summary/action-item extraction can work at all.
 const CHUNK_DURATION_MS = 30000;
+
+// Below this RMS, a chunk is treated as silence/near-silence and skipped rather than sent to
+// Whisper — very short/quiet audio is exactly the case where Whisper tends to hallucinate text
+// that was never actually said (classic case: invented "thanks for watching"-style phrases).
+const SILENCE_RMS_THRESHOLD = 0.015;
+
+// Below this duration, a chunk can't contain a complete meaningful utterance regardless of its
+// energy — skip it rather than risk Whisper hallucinating on a fragment.
+const MIN_CHUNK_DURATION_SEC = 1.5;
+
+async function isSilent(blob: Blob): Promise<boolean> {
+  let audioCtx: AudioContext | undefined;
+  try {
+    const arrayBuffer = await blob.arrayBuffer();
+    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    audioCtx = new AudioCtx();
+    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+    if (audioBuffer.duration < MIN_CHUNK_DURATION_SEC) return true;
+
+    const channelData = audioBuffer.getChannelData(0);
+    let sumSquares = 0;
+    for (let i = 0; i < channelData.length; i++) sumSquares += channelData[i] * channelData[i];
+    const rms = Math.sqrt(sumSquares / channelData.length);
+
+    return rms < SILENCE_RMS_THRESHOLD;
+  } catch {
+    // If we can't decode/analyze it, don't block sending — err on the side of transcribing.
+    return false;
+  } finally {
+    audioCtx?.close();
+  }
+}
 
 export const useTranscription = (
   meetingId: string,
@@ -17,6 +54,7 @@ export const useTranscription = (
   const sendChunk = useCallback(
     async (blob: Blob) => {
       if (blob.size === 0) return;
+      if (await isSilent(blob)) return;
 
       const formData = new FormData();
       formData.append("audio", blob, "chunk.webm");

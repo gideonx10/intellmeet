@@ -3,6 +3,14 @@ export interface ActionItem {
   text: string;
   assignee: string;
   done: boolean;
+  // Set once this action item has been converted to a task — reflects the task's
+  // live assignee/status rather than the AI's original (possibly stale) suggestion.
+  taskId?: {
+    _id: string;
+    status: "todo" | "in-progress" | "done";
+    dueDate?: string;
+    assignee: { _id: string; name: string; avatar?: string };
+  } | null;
 }
 
 export interface MeetingParticipant {

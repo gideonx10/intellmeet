@@ -1,6 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useMutation } from "@tanstack/react-query";
 import { isAxiosError } from "axios";
 import {
   Loader2,
@@ -33,52 +32,87 @@ function formatDuration(start?: string, end?: string) {
 export default function PostMeetingSummaryPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { data: meeting, refetch } = useGetMeeting(id!);
+  const { data: meeting, isLoading: meetingLoading, error: meetingError, refetch } = useGetMeeting(id!);
   const { mutate: toggleActionItem } = useToggleActionItem(id!);
   const { mutate: createTask, isPending: creatingTask, error: createTaskError } = useCreateTask();
 
   const [showTranscript, setShowTranscript] = useState(false);
   const [openItemId, setOpenItemId] = useState<string | null>(null);
-  const [convertedIds, setConvertedIds] = useState<Set<string>>(new Set());
   const [formAssignee, setFormAssignee] = useState("");
   const [formDueDate, setFormDueDate] = useState("");
 
-  const {
-    mutate: summarize,
-    isPending,
-    isError,
-    error,
-    isSuccess,
-  } = useMutation({
-    mutationFn: () => api.post(`/ai/summarize/${id}`),
-    onSuccess: () => refetch(),
-  });
+  // Driven from local state (set inside the request's own then/catch) rather than a
+  // useMutation hook's isPending/isSuccess/isError flags — those can end up read from a
+  // render pass whose effect never actually issued the request once this effect is guarded
+  // against React StrictMode's dev-mode double-invoke, leaving the UI stuck on "pending"
+  // even though the request itself resolved.
+  const [status, setStatus] = useState<"pending" | "success" | "error">("pending");
+  const [error, setError] = useState<unknown>(null);
+
+  const hasSummarized = useRef(false);
 
   useEffect(() => {
-    summarize();
+    if (hasSummarized.current) return;
+    // Wait for the meeting to load before deciding whether a summary already exists —
+    // otherwise every revisit (including "hours later") would re-run summarization,
+    // wholesale-overwriting actionItems and silently discarding taskId links.
+    if (meetingLoading) return;
+    if (meetingError) {
+      hasSummarized.current = true;
+      setError(meetingError);
+      setStatus("error");
+      return;
+    }
+    if (!meeting) return;
+    hasSummarized.current = true;
+
+    if (meeting.summary) {
+      setStatus("success");
+      return;
+    }
+
+    api
+      .post(`/ai/summarize/${id}`)
+      .then(() => {
+        setStatus("success");
+        refetch();
+      })
+      .catch((e) => {
+        setError(e);
+        setStatus("error");
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, meeting, meetingLoading, meetingError]);
+
+  const isPending = status === "pending";
+  const isSuccess = status === "success";
+  const isError = status === "error";
 
   const noTranscript = isError && isAxiosError(error) && error.response?.status === 400;
   const duration = formatDuration(meeting?.startedAt, meeting?.endedAt);
 
   const openConvertForm = (item: ActionItem) => {
     setOpenItemId(item._id ?? null);
-    const match = meeting?.participants.find(
-      (p) => p.user.name.toLowerCase() === item.assignee.toLowerCase()
-    );
-    setFormAssignee(match?.user._id ?? "");
-    setFormDueDate("");
+    if (item.taskId) {
+      setFormAssignee(item.taskId.assignee._id);
+      setFormDueDate(item.taskId.dueDate ? item.taskId.dueDate.slice(0, 10) : "");
+    } else {
+      const match = meeting?.participants.find(
+        (p) => p.user.name.toLowerCase() === item.assignee.toLowerCase()
+      );
+      setFormAssignee(match?.user._id ?? "");
+      setFormDueDate("");
+    }
   };
 
   const handleConvert = (item: ActionItem) => {
     if (!formAssignee || !item._id) return;
     createTask(
-      { title: item.text, assignee: formAssignee, meeting: id, dueDate: formDueDate || undefined },
+      { title: item.text, assignee: formAssignee, meeting: id, dueDate: formDueDate || undefined, actionItemId: item._id },
       {
         onSuccess: () => {
-          setConvertedIds((prev) => new Set(prev).add(item._id!));
           setOpenItemId(null);
+          refetch();
         },
       }
     );
@@ -186,14 +220,24 @@ export default function PostMeetingSummaryPage() {
                             {item.text}
                           </p>
                           <span className="inline-block mt-1 text-xs bg-slate-100 text-slate-600 rounded-full px-2 py-0.5">
-                            {item.assignee}
+                            {item.taskId?.assignee.name ?? item.assignee}
                           </span>
+                          {item.taskId && (
+                            <span className="inline-block mt-1 ml-1 text-xs bg-blue-50 text-blue-600 rounded-full px-2 py-0.5 capitalize">
+                              {item.taskId.status.replace("-", " ")}
+                            </span>
+                          )}
                         </div>
 
-                        {item._id && convertedIds.has(item._id) ? (
-                          <span className="no-print text-xs text-green-600 font-medium shrink-0 mt-1">
-                            Task created ✓
-                          </span>
+                        {item.taskId ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="no-print shrink-0 text-blue-600 hover:text-blue-700"
+                            onClick={() => openConvertForm(item)}
+                          >
+                            Reassign
+                          </Button>
                         ) : (
                           <Button
                             variant="outline"
@@ -232,7 +276,7 @@ export default function PostMeetingSummaryPage() {
                               disabled={!formAssignee || creatingTask}
                               onClick={() => handleConvert(item)}
                             >
-                              {creatingTask ? "Creating..." : "Create Task"}
+                              {creatingTask ? "Saving..." : item.taskId ? "Save" : "Create Task"}
                             </Button>
                             <Button size="sm" variant="ghost" onClick={() => setOpenItemId(null)}>
                               Cancel
